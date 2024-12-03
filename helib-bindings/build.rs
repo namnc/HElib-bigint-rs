@@ -14,17 +14,9 @@ const LIB_FOLDER: &str = "helib_pack/lib";
 const INCLUDE_FOLDER: &str = "helib_pack/include";
 const HELIB_LIB: &str = "helib";
 
-fn download(out_dir: &Path) -> Result<()> {
-    let out_folder = out_dir.join(HELIB_FOLDER);
-    if out_folder.exists() {
-        std::fs::remove_dir_all(&out_folder)?;
-    }
-
-    let repo = Repository::clone(REPO_URL, out_folder)?;
-
-    // Checkout correct hash
-    let refname = "9f531cd23ca51ffdc780257f30fdc14c9de98c3b";
-    let (object, reference) = repo.revparse_ext(refname)?;
+#[allow(dead_code)]
+fn checkout_commit(repo: &Repository, commit: &str) -> Result<()> {
+    let (object, reference) = repo.revparse_ext(commit)?;
 
     repo.checkout_tree(&object, None)?;
 
@@ -34,6 +26,19 @@ fn download(out_dir: &Path) -> Result<()> {
         // this is a commit, not a reference
         None => repo.set_head_detached(object.id()),
     }?;
+    Ok(())
+}
+
+fn download(out_dir: &Path) -> Result<()> {
+    let out_folder = out_dir.join(HELIB_FOLDER);
+    if out_folder.exists() {
+        std::fs::remove_dir_all(&out_folder)?;
+    }
+
+    let _repo = Repository::clone(REPO_URL, out_folder)?;
+
+    // Checkout correct hash
+    // checkout_commit(&_repo, "9f531cd23ca51ffdc780257f30fdc14c9de98c3b")?;
 
     Ok(())
 }

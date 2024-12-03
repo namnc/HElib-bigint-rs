@@ -1,0 +1,21 @@
+[package]
+name = "helib-bindings"
+version = "0.1.0"
+publish.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[build-dependencies]
+anyhow = "1.0"
+bindgen = "0.70"
+cmake = "0.1"
+git2 = "0.19"
+
+[features]
+default = ["clang"]
+clang = []
+debug = []

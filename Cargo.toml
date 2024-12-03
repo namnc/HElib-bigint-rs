@@ -1,6 +1,9 @@
-[package]
-name = "helib-bigint-rs"
-version = "0.1.0"
+
+[workspace]
+members = ["helib-bindings", "helib-rs"]
+resolver = "2"
+
+[workspace.package]
 edition = "2021"
 rust-version = "1.80"
 authors = ["Roman Walch <walch@taceo.io>"]
@@ -9,14 +12,3 @@ repository = "https:://github.com/TaceoLabs/helib-bigint-rs"
 license = "MIT OR Apache-2.0"
 publish = false
 readme = "./README.md"
-
-[build-dependencies]
-anyhow = "1.0"
-bindgen = "0.70"
-cmake = "0.1"
-git2 = "0.19"
-
-[features]
-default = ["clang"]
-clang = []
-debug = []

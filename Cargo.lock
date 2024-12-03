@@ -137,13 +137,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
-name = "helib-bigint-rs"
+name = "helib-bindings"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bindgen",
  "cmake",
  "git2",
+]
+
+[[package]]
+name = "helib-rs"
+version = "0.1.0"
+dependencies = [
+ "helib-bindings",
 ]
 
 [[package]]
