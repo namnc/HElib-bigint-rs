@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use bindgen::Builder;
 use cmake::Config;
 use git2::Repository;
 use std::{
@@ -10,6 +11,7 @@ const REPO_URL: &str = "https://github.com/rw0x0/HElib";
 const HELIB_FOLDER: &str = "HElib";
 const INSTALL_FOLDER: &str = "helib_install";
 const LIB_FOLDER: &str = "helib_pack/lib";
+const INCLUDE_FOLDER: &str = "helib_pack/include";
 const HELIB_LIB: &str = "helib";
 
 fn download(out_dir: &Path) -> Result<()> {
@@ -21,14 +23,14 @@ fn download(out_dir: &Path) -> Result<()> {
     let repo = Repository::clone(REPO_URL, out_folder)?;
 
     // Checkout correct hash
-    let refname = "d481f8e0ed92b52f18b3ab6993750d471a694bb3";
+    let refname = "9f531cd23ca51ffdc780257f30fdc14c9de98c3b";
     let (object, reference) = repo.revparse_ext(refname)?;
 
     repo.checkout_tree(&object, None)?;
 
     match reference {
         // gref is an actual reference like branches or tags
-        Some(gref) => repo.set_head(gref.name().expect("Gref has name")),
+        Some(gref) => repo.set_head(gref.name().ok_or(anyhow!("Gref has name"))?),
         // this is a commit, not a reference
         None => repo.set_head_detached(object.id()),
     }?;
@@ -76,6 +78,36 @@ fn exist(out_dir: &Path) -> bool {
     false
 }
 
+fn bindgen(out_dir: &Path) -> Result<()> {
+    let include_dir = out_dir.join(INSTALL_FOLDER).join(INCLUDE_FOLDER);
+
+    let incl_str = match include_dir.to_str() {
+        Some(x) => x,
+        None => return Err(anyhow!("Error Path does not exist?")),
+    };
+
+    let bindings = Builder::default()
+        .derive_copy(true)
+        .derive_debug(true)
+        .header("src/wrapper.h")
+        .clang_arg(format!("-I{}", incl_str))
+        .clang_arg("-std=c++17")
+        .clang_arg("-x")
+        .clang_arg("c++")
+        .generate();
+
+    let unpacked = match bindings {
+        Ok(v) => v,
+        Err(_) => {
+            return Err(anyhow!("Error generating bindings"));
+        }
+    };
+
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    unpacked.write_to_file(out_dir.join("bindings.rs"))?;
+    Ok(())
+}
+
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("getting environment var failed"));
     if !exist(&out_dir) {
@@ -83,5 +115,5 @@ fn main() {
         build(&out_dir).expect("Build failed");
     }
     link(&out_dir).expect("Link failed");
-    // bindgen(&out_dir).expect("Bindgen failed");
+    bindgen(&out_dir).expect("Bindgen failed");
 }
