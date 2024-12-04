@@ -13,6 +13,8 @@ const INSTALL_FOLDER: &str = "helib_install";
 const LIB_FOLDER: &str = "helib_pack/lib";
 const INCLUDE_FOLDER: &str = "helib_pack/include";
 const HELIB_LIB: &str = "helib";
+const GMP_LIB: &str = "gmp";
+const NTL_LIB: &str = "ntl";
 
 #[allow(dead_code)]
 fn checkout_commit(repo: &Repository, commit: &str) -> Result<()> {
@@ -70,6 +72,8 @@ fn link(out_dir: &Path) -> Result<()> {
     let lib_dir = out_dir.join(INSTALL_FOLDER).join(LIB_FOLDER);
 
     println!("cargo:rustc-link-search={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=dylib={}", GMP_LIB);
+    println!("cargo:rustc-link-lib=dylib={}", NTL_LIB);
     println!("cargo:rustc-link-lib=static={}", HELIB_LIB);
     println!("cargo:rustc-link-lib=stdc++");
     Ok(())
