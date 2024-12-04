@@ -28,6 +28,13 @@ impl ZZ {
         Ok(Self { ptr })
     }
 
+    pub fn zz_clone(&self) -> Result<ZZ, Error> {
+        let mut zz = ZZ::empty_pointer();
+        let ret = unsafe { helib_bindings::ZZ_clone(&mut zz.ptr, self.ptr) };
+        Error::error_from_return(ret)?;
+        Ok(zz)
+    }
+
     pub fn num_bytes(&self) -> Result<CLong, Error> {
         let mut len = 0;
         let ret = unsafe { helib_bindings::ZZ_bytes(self.ptr, &mut len) };
@@ -107,6 +114,12 @@ impl Drop for ZZ {
     }
 }
 
+impl Clone for ZZ {
+    fn clone(&self) -> Self {
+        self.zz_clone().expect("ZZ clone failed")
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -163,6 +176,19 @@ mod test {
             assert!(output < ark_bn254::Fr::MODULUS.into());
             assert_ne!(prev, output); // Very unlikely to be equal
             prev = output;
+        }
+    }
+
+    #[test]
+    fn zz_clone() {
+        let mod_ = ZZ::char::<ark_bn254::Fr>().unwrap();
+        for _ in 0..TESTRUNS {
+            let mut zz = ZZ::random_mod(&mod_).unwrap();
+            let zz_ = zz.to_biguint().unwrap();
+            let clone = zz.clone();
+            zz.destroy().unwrap();
+            let clone_ = clone.to_biguint().unwrap();
+            assert_eq!(zz_, clone_);
         }
     }
 }
