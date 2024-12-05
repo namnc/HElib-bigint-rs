@@ -5,6 +5,8 @@ use crate::{
 };
 use ark_ff::PrimeField;
 
+use super::SquareMatrix;
+
 pub struct Bsgs {}
 
 impl Bsgs {
@@ -55,9 +57,9 @@ impl Bsgs {
         Ok(())
     }
 
-    pub fn babystep_giantstep<F: PrimeField>(
+    pub fn babystep_giantstep<F: PrimeField, T: SquareMatrix<F>>(
         ctxt: &mut Ctxt,
-        matrix: &[Vec<F>],
+        matrix: &T,
         batch_encoder: &BatchEncoder<F>,
         galois_engine: &GaloisEngine,
         n1: usize,
@@ -74,10 +76,10 @@ impl Bsgs {
         )
     }
 
-    pub fn babystep_giantstep_two_matrices<F: PrimeField>(
+    pub fn babystep_giantstep_two_matrices<F: PrimeField, T: SquareMatrix<F>>(
         ctxt: &mut Ctxt,
-        matrix1: &[Vec<F>],
-        matrix2: &[Vec<F>],
+        matrix1: &T,
+        matrix2: &T,
         batch_encoder: &BatchEncoder<F>,
         galois_engine: &GaloisEngine,
         n1: usize,
@@ -94,13 +96,13 @@ impl Bsgs {
         )
     }
 
-    fn encode_one_matrix<F: PrimeField>(
-        matrix: &[Vec<F>],
+    fn encode_one_matrix<F: PrimeField, T: SquareMatrix<F>>(
+        matrix: &T,
         batch_encoder: &BatchEncoder<F>,
         n1: usize,
         n2: usize,
     ) -> Result<Vec<EncodedPtxt>, Error> {
-        let dim = matrix.len();
+        let dim = matrix.dimension();
         let slots = batch_encoder.slot_count();
         let halfslots = slots >> 1;
         assert!(dim << 1 == slots || dim << 2 < slots);
@@ -112,8 +114,8 @@ impl Bsgs {
             let k = i / n1;
             let mut diag = Vec::with_capacity(halfslots);
 
-            for (j, matrix) in matrix.iter().enumerate() {
-                diag.push(matrix[(j + dim - i) % dim]);
+            for j in 0..dim {
+                diag.push(matrix.get(j, (j + dim - i) % dim));
             }
             // rotate:
             if k != 0 {
@@ -135,15 +137,15 @@ impl Bsgs {
         Ok(encoded)
     }
 
-    fn encode_two_matrices<F: PrimeField>(
-        matrix1: &[Vec<F>],
-        matrix2: &[Vec<F>],
+    fn encode_two_matrices<F: PrimeField, T: SquareMatrix<F>>(
+        matrix1: &T,
+        matrix2: &T,
         batch_encoder: &BatchEncoder<F>,
         n1: usize,
         n2: usize,
     ) -> Result<Vec<EncodedPtxt>, Error> {
-        let dim = matrix1.len();
-        assert_eq!(dim, matrix2.len());
+        let dim = matrix1.dimension();
+        assert_eq!(dim, matrix2.dimension());
         let slots = batch_encoder.slot_count();
         let halfslots = slots >> 1;
         assert!(dim << 1 == slots || dim << 2 < slots);
@@ -156,9 +158,9 @@ impl Bsgs {
             let mut diag = Vec::with_capacity(slots);
             let mut tmp = Vec::with_capacity(dim);
 
-            for (j, (matrix1, matrix2)) in matrix1.iter().zip(matrix2.iter()).enumerate() {
-                diag.push(matrix1[(j + dim - i) % dim]);
-                tmp.push(matrix2[(j + dim - i) % dim]);
+            for j in 0..dim {
+                diag.push(matrix1.get(j, (j + dim - i) % dim));
+                tmp.push(matrix2.get(j, (j + dim - i) % dim));
             }
             // rotate:
             if k != 0 {
