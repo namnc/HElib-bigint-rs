@@ -1,5 +1,5 @@
 use super::{error::Error, CLong};
-use crate::ZZ;
+use crate::{EncodedPtxt, ZZ};
 use ark_ff::PrimeField;
 use std::{
     ffi::c_void,
@@ -133,6 +133,44 @@ impl Ctxt {
         Ok(ctxt)
     }
 
+    // Arithmetic with packed constants
+
+    pub fn ctxt_add_by_packed_constant(&self, other: &EncodedPtxt) -> Result<Ctxt, Error> {
+        let mut ctxt = Ctxt::empty_pointer();
+        let ret = unsafe {
+            helib_bindings::ctxt_add_by_packed_constant(&mut ctxt.ptr, self.ptr, other.ptr)
+        };
+        Error::error_from_return(ret)?;
+        Ok(ctxt)
+    }
+
+    pub fn ctxt_sub_by_packed_constant(&self, other: &EncodedPtxt) -> Result<Ctxt, Error> {
+        let mut ctxt = Ctxt::empty_pointer();
+        let ret = unsafe {
+            helib_bindings::ctxt_sub_by_packed_constant(&mut ctxt.ptr, self.ptr, other.ptr)
+        };
+        Error::error_from_return(ret)?;
+        Ok(ctxt)
+    }
+
+    pub fn ctxt_sub_from_packed_constant(&self, other: &EncodedPtxt) -> Result<Ctxt, Error> {
+        let mut ctxt = Ctxt::empty_pointer();
+        let ret = unsafe {
+            helib_bindings::ctxt_sub_from_packed_constant(&mut ctxt.ptr, other.ptr, self.ptr)
+        };
+        Error::error_from_return(ret)?;
+        Ok(ctxt)
+    }
+
+    pub fn ctxt_mul_by_packed_constant(&self, other: &EncodedPtxt) -> Result<Ctxt, Error> {
+        let mut ctxt = Ctxt::empty_pointer();
+        let ret = unsafe {
+            helib_bindings::ctxt_mult_by_packed_constant(&mut ctxt.ptr, self.ptr, other.ptr)
+        };
+        Error::error_from_return(ret)?;
+        Ok(ctxt)
+    }
+
     // Arithmetic with constants in place
 
     pub fn ctxt_add_by_constant_inplace(&mut self, other: &ZZ) -> Result<(), Error> {
@@ -152,6 +190,44 @@ impl Ctxt {
 
     pub fn ctxt_mul_by_constant_inplace(&mut self, other: &ZZ) -> Result<(), Error> {
         let ret = unsafe { helib_bindings::ctxt_mult_by_constant_inplace(self.ptr, other.ptr) };
+        Error::error_from_return(ret)
+    }
+
+    // Arithmetic with packed constants in place
+
+    pub fn ctxt_add_by_packed_constant_inplace(
+        &mut self,
+        other: &EncodedPtxt,
+    ) -> Result<(), Error> {
+        let ret =
+            unsafe { helib_bindings::ctxt_add_by_packed_constant_inplace(self.ptr, other.ptr) };
+        Error::error_from_return(ret)
+    }
+
+    pub fn ctxt_sub_by_packed_constant_inplace(
+        &mut self,
+        other: &EncodedPtxt,
+    ) -> Result<(), Error> {
+        let ret =
+            unsafe { helib_bindings::ctxt_sub_by_packed_constant_inplace(self.ptr, other.ptr) };
+        Error::error_from_return(ret)
+    }
+
+    pub fn ctxt_sub_from_packed_constant_inplace(
+        &mut self,
+        other: &EncodedPtxt,
+    ) -> Result<(), Error> {
+        let ret =
+            unsafe { helib_bindings::ctxt_sub_from_packed_constant_inplace(self.ptr, other.ptr) };
+        Error::error_from_return(ret)
+    }
+
+    pub fn ctxt_mul_by_packed_constant_inplace(
+        &mut self,
+        other: &EncodedPtxt,
+    ) -> Result<(), Error> {
+        let ret =
+            unsafe { helib_bindings::ctxt_mult_by_packed_constant_inplace(self.ptr, other.ptr) };
         Error::error_from_return(ret)
     }
 
@@ -311,6 +387,45 @@ impl Mul<&ZZ> for &Ctxt {
     }
 }
 
+// Arithmetic with packed constants
+
+impl Add<&EncodedPtxt> for &Ctxt {
+    type Output = Ctxt;
+
+    fn add(self, other: &EncodedPtxt) -> Ctxt {
+        self.ctxt_add_by_packed_constant(other)
+            .expect("Add packed constant failed")
+    }
+}
+
+impl Sub<&EncodedPtxt> for &Ctxt {
+    type Output = Ctxt;
+
+    fn sub(self, other: &EncodedPtxt) -> Ctxt {
+        self.ctxt_sub_by_packed_constant(other)
+            .expect("Sub packed constant failed")
+    }
+}
+
+impl Sub<&Ctxt> for &EncodedPtxt {
+    type Output = Ctxt;
+
+    fn sub(self, other: &Ctxt) -> Ctxt {
+        other
+            .ctxt_sub_from_packed_constant(self)
+            .expect("Sub from packed constant failed")
+    }
+}
+
+impl Mul<&EncodedPtxt> for &Ctxt {
+    type Output = Ctxt;
+
+    fn mul(self, other: &EncodedPtxt) -> Ctxt {
+        self.ctxt_mul_by_packed_constant(other)
+            .expect("Mul packed constant failed")
+    }
+}
+
 // Arithmetic with constants in place
 
 impl AddAssign<&ZZ> for Ctxt {
@@ -330,6 +445,29 @@ impl SubAssign<&ZZ> for Ctxt {
 impl MulAssign<&ZZ> for Ctxt {
     fn mul_assign(&mut self, other: &ZZ) {
         self.ctxt_mul_by_constant_inplace(other)
+            .expect("MulAssign constant failed")
+    }
+}
+
+// Arithmetic with packed constants in place
+
+impl AddAssign<&EncodedPtxt> for Ctxt {
+    fn add_assign(&mut self, other: &EncodedPtxt) {
+        self.ctxt_add_by_packed_constant_inplace(other)
+            .expect("AddAssign constant failed")
+    }
+}
+
+impl SubAssign<&EncodedPtxt> for Ctxt {
+    fn sub_assign(&mut self, other: &EncodedPtxt) {
+        self.ctxt_sub_by_packed_constant_inplace(other)
+            .expect("SubAssign constant failed")
+    }
+}
+
+impl MulAssign<&EncodedPtxt> for Ctxt {
+    fn mul_assign(&mut self, other: &EncodedPtxt) {
+        self.ctxt_mul_by_packed_constant_inplace(other)
             .expect("MulAssign constant failed")
     }
 }
