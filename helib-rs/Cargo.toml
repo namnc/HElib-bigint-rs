@@ -10,12 +10,15 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ark-bn254 = "0.5"
 ark-ff = "0.5"
 ark-poly = "0.5"
+color-eyre = "0.6"
 num-bigint = "0.4"
 helib-bindings = { path = "../helib-bindings" }
 rand = "0.8"
 thiserror = "2.0"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-ark-bn254 = "0.5"
