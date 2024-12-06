@@ -102,7 +102,8 @@ impl Bsgs {
         n1: usize,
         n2: usize,
     ) -> Result<Vec<EncodedPtxt>, Error> {
-        let dim = matrix.dimension();
+        let dim = n1 * n2;
+        assert!(dim <= matrix.dimension());
         let slots = batch_encoder.slot_count();
         let halfslots = slots >> 1;
         assert!(dim << 1 == slots || dim << 2 < slots);
@@ -144,12 +145,12 @@ impl Bsgs {
         n1: usize,
         n2: usize,
     ) -> Result<Vec<EncodedPtxt>, Error> {
-        let dim = matrix1.dimension();
-        assert_eq!(dim, matrix2.dimension());
+        let dim = n1 * n2;
+        assert!(dim <= matrix1.dimension());
+        assert!(dim <= matrix2.dimension());
         let slots = batch_encoder.slot_count();
         let halfslots = slots >> 1;
         assert!(dim << 1 == slots || dim << 2 < slots);
-        assert_eq!(dim, n1 * n2);
 
         let mut encoded = Vec::with_capacity(dim);
 
@@ -188,6 +189,58 @@ impl Bsgs {
         Ok(encoded)
     }
 
+    pub fn fully_packed_bsgs<F: PrimeField, T: SquareMatrix<F>>(
+        ctxt: &mut Ctxt,
+        matrix: &T,
+        batch_encoder: &BatchEncoder<F>,
+        galois_engine: &GaloisEngine,
+    ) -> Result<(), Error> {
+        let dim = matrix.dimension();
+        let slots = batch_encoder.slot_count();
+        assert_eq!(dim, slots);
+        let dim_half = dim >> 1;
+        let n2 = 1 << (dim_half.ilog2() >> 1);
+        let n1 = dim_half / n2;
+
+        // Strategy: Split M = [M1, M2] [M3, M4] and v = [v1, v2], then result r = [r1, r2]  is computed as (M1*v1 + M2*v2, M3*v1 + M4*v2)
+        let mut ctxt2 = ctxt.ctxt_clone()?;
+
+        // First half: M1*v1 + M4*v2
+        let mat1 = matrix.clone();
+        let mut mat4 = matrix.clone();
+        mat4.set_col_offset(dim_half);
+        mat4.set_row_offset(dim_half);
+        Self::babystep_giantstep_two_matrices(
+            ctxt,
+            &mat1,
+            &mat4,
+            batch_encoder,
+            galois_engine,
+            n1,
+            n2,
+        )?;
+
+        // Second half: M3*v1 + M2*v2
+        let mut mat3 = mat1;
+        mat3.set_row_offset(dim_half);
+        let mut mat2 = mat4;
+        mat2.set_row_offset(0);
+        mat2.set_col_offset(dim_half);
+        Self::babystep_giantstep_two_matrices(
+            &mut ctxt2,
+            &mat3,
+            &mat2,
+            batch_encoder,
+            galois_engine,
+            n1,
+            n2,
+        )?;
+
+        // Combine results: ctxt + swapped(ctxt2)
+        galois_engine.rotate_ctxt_columns(&mut ctxt2)?;
+        ctxt.ctxt_add_inplace(&ctxt2)
+    }
+
     pub fn bsgs_indices(n1: usize, n2: usize, slots: usize) -> Vec<i32> {
         let mut result = Vec::new();
 
@@ -210,11 +263,16 @@ impl Bsgs {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{helib::CLong, Context, PubKey, SecKey, ZZ};
+    use crate::{
+        encoding::{galois::Galois, ntt::NTTProcessor},
+        helib::CLong,
+        matrix::{FFTMatrix, IFFTMatrix, SplittableMatrix},
+        Context, PubKey, SecKey, ZZ,
+    };
     use ark_ff::{UniformRand, Zero};
     use rand::thread_rng;
 
-    const N: usize = 16384;
+    const N: usize = 4096;
     const M: usize = 2 * N;
     const BITS: CLong = 850;
 
@@ -343,5 +401,137 @@ mod test {
         let decoded = decrypted.decode(&batch_encoder).unwrap();
         assert_eq!(expected1, &decoded[..dim]);
         assert_eq!(expected2, &decoded[halfslots..halfslots + dim]);
+    }
+
+    #[test]
+    #[ignore]
+    fn fully_packed_bsgs_test() {
+        let dim = N;
+        let dim_half = dim >> 1;
+        let n2 = 1 << (dim_half.ilog2() >> 1);
+        let n1 = dim_half / n2;
+        let mut rng = thread_rng();
+
+        let vec = (0..dim)
+            .map(|_| ark_bn254::Fr::rand(&mut rng))
+            .collect::<Vec<_>>();
+        let mat = (0..dim)
+            .map(|_| {
+                (0..dim)
+                    .map(|_| ark_bn254::Fr::rand(&mut rng))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let expected = plain_mat_vec(&mat, &vec);
+
+        // HE
+        let p = ZZ::char::<ark_bn254::Fr>().unwrap();
+        let context = Context::build(M as CLong, &p, BITS).unwrap();
+        let mut galois = GaloisEngine::build(M as CLong).unwrap();
+        let seckey = SecKey::build(&context).unwrap();
+        let pubkey = PubKey::from_seckey(&seckey).unwrap();
+        let batch_encoder = BatchEncoder::new(N);
+
+        for index in Bsgs::bsgs_indices(n1, n2, N) {
+            galois.generate_key_for_step(&seckey, index).unwrap();
+        }
+        galois.generate_key_for_step(&seckey, 0).unwrap(); // Column swap
+
+        let encoded = EncodedPtxt::encode(&vec, &batch_encoder).unwrap();
+        let mut ctxt = pubkey.packed_encrypt(&encoded).unwrap();
+
+        let mat = SplittableMatrix::new(mat);
+        Bsgs::fully_packed_bsgs(&mut ctxt, &mat, &batch_encoder, &galois).unwrap();
+
+        let decrypted = seckey.packed_decrypt(&ctxt).unwrap();
+        let decoded = decrypted.decode(&batch_encoder).unwrap();
+        assert_eq!(expected, decoded);
+    }
+
+    #[test]
+    #[ignore]
+    fn fully_packed_ntt_test() {
+        let root = Galois::get_minimal_primitive_n_root_of_unity(N).expect("no root found!"); // cyclic ntt
+        let ntt_proc = NTTProcessor::new(N, root);
+
+        let dim = N;
+        let dim_half = dim >> 1;
+        let n2 = 1 << (dim_half.ilog2() >> 1);
+        let n1 = dim_half / n2;
+        let mut rng = thread_rng();
+
+        let mut vec = (0..dim)
+            .map(|_| ark_bn254::Fr::rand(&mut rng))
+            .collect::<Vec<_>>();
+
+        // HE
+        let p = ZZ::char::<ark_bn254::Fr>().unwrap();
+        let context = Context::build(M as CLong, &p, BITS).unwrap();
+        let mut galois = GaloisEngine::build(M as CLong).unwrap();
+        let seckey = SecKey::build(&context).unwrap();
+        let pubkey = PubKey::from_seckey(&seckey).unwrap();
+        let batch_encoder = BatchEncoder::new(N);
+
+        for index in Bsgs::bsgs_indices(n1, n2, N) {
+            galois.generate_key_for_step(&seckey, index).unwrap();
+        }
+        galois.generate_key_for_step(&seckey, 0).unwrap(); // Column swap
+
+        let encoded = EncodedPtxt::encode(&vec, &batch_encoder).unwrap();
+        let mut ctxt = pubkey.packed_encrypt(&encoded).unwrap();
+
+        let mat = FFTMatrix::new(N, root);
+        Bsgs::fully_packed_bsgs(&mut ctxt, &mat, &batch_encoder, &galois).unwrap();
+
+        let decrypted = seckey.packed_decrypt(&ctxt).unwrap();
+        let decoded = decrypted.decode(&batch_encoder).unwrap();
+
+        // plain
+        ntt_proc.transform_inplace(&mut vec);
+        assert_eq!(vec, decoded);
+    }
+
+    #[test]
+    #[ignore]
+    fn fully_packed_intt_test() {
+        let root = Galois::get_minimal_primitive_n_root_of_unity(N).expect("no root found!"); // cyclic ntt
+        let ntt_proc = NTTProcessor::new(N, root);
+
+        let dim = N;
+        let dim_half = dim >> 1;
+        let n2 = 1 << (dim_half.ilog2() >> 1);
+        let n1 = dim_half / n2;
+        let mut rng = thread_rng();
+
+        let mut vec = (0..dim)
+            .map(|_| ark_bn254::Fr::rand(&mut rng))
+            .collect::<Vec<_>>();
+
+        // HE
+        let p = ZZ::char::<ark_bn254::Fr>().unwrap();
+        let context = Context::build(M as CLong, &p, BITS).unwrap();
+        let mut galois = GaloisEngine::build(M as CLong).unwrap();
+        let seckey = SecKey::build(&context).unwrap();
+        let pubkey = PubKey::from_seckey(&seckey).unwrap();
+        let batch_encoder = BatchEncoder::new(N);
+
+        for index in Bsgs::bsgs_indices(n1, n2, N) {
+            galois.generate_key_for_step(&seckey, index).unwrap();
+        }
+        galois.generate_key_for_step(&seckey, 0).unwrap(); // Column swap
+
+        let encoded = EncodedPtxt::encode(&vec, &batch_encoder).unwrap();
+        let mut ctxt = pubkey.packed_encrypt(&encoded).unwrap();
+
+        let mat = IFFTMatrix::new(N, root);
+        Bsgs::fully_packed_bsgs(&mut ctxt, &mat, &batch_encoder, &galois).unwrap();
+
+        let decrypted = seckey.packed_decrypt(&ctxt).unwrap();
+        let decoded = decrypted.decode(&batch_encoder).unwrap();
+
+        // plain
+        ntt_proc.inverse_transform_inplace(&mut vec);
+        assert_eq!(vec, decoded);
     }
 }
