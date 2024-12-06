@@ -265,6 +265,8 @@ fn main() -> color_eyre::Result<ExitCode> {
     tracing::info!("  N: {}", HE_N);
     tracing::info!("  Bits: {}", HE_BITS);
     tracing::info!("  Security level: {:.2}", security);
+    println!("\nHE Context:");
+    context.context.printout()?;
 
     let ffts_bit = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
