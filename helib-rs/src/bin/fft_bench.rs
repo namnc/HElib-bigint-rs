@@ -7,7 +7,7 @@ use helib_rs::{
 use rand::{thread_rng, Rng};
 use std::{process::ExitCode, time::Instant};
 
-const HE_N: CLong = 32768;
+const HE_N: CLong = 65536;
 const HE_M: CLong = 2 * HE_N;
 const HE_BITS: CLong = 850;
 
