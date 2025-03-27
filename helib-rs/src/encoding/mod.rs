@@ -1,6 +1,7 @@
 pub(crate) mod batch_encoder;
 pub(crate) mod galois;
 pub(crate) mod ntt;
+pub(crate) mod ntt2d;
 
 pub(crate) fn reverse_bits32(input: u32) -> u32 {
     let mut output = ((input & 0xaaaaaaaa) >> 1) | ((input & 0x55555555) << 1);

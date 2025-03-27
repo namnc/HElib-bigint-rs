@@ -4,6 +4,7 @@ pub mod matrix;
 
 pub use encoding::batch_encoder::BatchEncoder;
 pub use encoding::ntt::NTTProcessor;
+pub use encoding::ntt2d::NTTProcessor2D;
 pub use helib::context::Context;
 pub use helib::ctxt::Ctxt;
 pub use helib::encoded_ptxt::EncodedPtxt;

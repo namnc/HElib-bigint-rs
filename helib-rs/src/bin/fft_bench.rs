@@ -1,7 +1,7 @@
 use ark_ff::PrimeField;
 use helib_rs::{
     matrix::{Bsgs, FFTMatrix},
-    BatchEncoder, CLong, Context, Ctxt, EncodedPtxt, Error, GaloisEngine, NTTProcessor, PubKey,
+    BatchEncoder, CLong, Context, Ctxt, EncodedPtxt, Error, GaloisEngine, NTTProcessor, NTTProcessor2D, PubKey,
     SecKey, ZZ,
 };
 use rand::{thread_rng, Rng};
@@ -238,6 +238,58 @@ fn fft_test<F: PrimeField>(dim: usize, context: &mut HeContext<F>) -> Result<(),
     Ok(())
 }
 
+
+fn fft_test_2<F: PrimeField>(dim: usize, context: &mut HeContext<F>) -> Result<(), Error> {
+    tracing::info!("");
+    tracing::info!("FFT test for size: {}", dim);
+
+    if !dim.is_power_of_two() {
+        return Err(Error::Other("FFT: Size must be a power of two".to_string()));
+    }
+
+    let mut rng = thread_rng();
+    tracing::info!("Generating random input");
+    let start = Instant::now();
+    let input = random_vec(dim, &mut rng);
+    let duration_ms = start.elapsed().as_micros() as f64 / 1000.;
+    tracing::info!("Generating random input took {} ms", duration_ms);
+
+    let root: F = FFTMatrix::get_minimal_root(dim);
+
+    // ────────────── ark-ff 1D FFT ──────────────
+    tracing::info!("Running 1D FFT (ark-ff)");
+    let ntt_proc = NTTProcessor::new(dim, root);
+    let start = Instant::now();
+    let fft_output = ntt_proc.fft(&input);
+    let fft_duration = start.elapsed().as_micros() as f64 / 1000.;
+    tracing::info!("1D FFT took {} ms", fft_duration);
+
+    // ────────────── cus 2D NTT ──────────────
+    tracing::info!("Running 2D NTT (custom)");
+    let ntt_proc2 = NTTProcessor2D::new(dim, root, None);
+    let start = Instant::now();
+    let ntt_output = ntt_proc2.ntt_2d(&input);
+    let ntt_duration = start.elapsed().as_micros() as f64 / 1000.;
+    tracing::info!("2D NTT took {} ms", ntt_duration);
+
+    if fft_output != ntt_output {
+        tracing::warn!("Warning: 2D NTT output differs from ark-ff FFT output.");
+    }
+
+    // ────────────── Homomorphic FFT ──────────────
+    let ctxts = encrypt(&input, context)?;
+    let ctxts_fft = fft_selector(dim, root, &ctxts, context)?;
+    let output = decrypt(dim, &ctxts_fft, context)?;
+
+    if output != fft_output && output != ntt_output {
+        return Err(Error::Other("FFT: Results mismatched".to_string()));
+    }
+
+    Ok(())
+}
+
+
+
 fn install_tracing() {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
@@ -271,7 +323,7 @@ fn main() -> color_eyre::Result<ExitCode> {
     let ffts_bit = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
     for bit in ffts_bit {
-        fft_test(1 << bit, &mut context)?;
+        fft_test_2(1 << bit, &mut context)?;
     }
 
     Ok(ExitCode::SUCCESS)
